@@ -13,7 +13,7 @@ DataStore::CAS::FileCreatorHandle - Handle-emulation object used for writing con
 
 =head1 VERSION
 
-version 0.0100
+version 0.0200
 
 =head1 DESCRIPTION
 

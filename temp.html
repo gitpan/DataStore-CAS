@@ -1,0 +1,394 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>lib/DataStore/CAS.pm</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:root@localhost" />
+</head>
+
+<body style="background-color: white">
+
+
+<!-- INDEX BEGIN -->
+<div name="index">
+<p><a name="__index__"></a></p>
+
+<ul>
+
+	<li><a href="#description">DESCRIPTION</a></li>
+	<li><a href="#purpose">PURPOSE</a></li>
+	<li><a href="#synopsis">SYNOPSIS</a></li>
+	<li><a href="#attributes">ATTRIBUTES</a></li>
+	<ul>
+
+		<li><a href="#digest">digest</a></li>
+		<li><a href="#hash_of_null">hash_of_null</a></li>
+	</ul>
+
+	<li><a href="#methods">METHODS</a></li>
+	<ul>
+
+		<li><a href="#get">get</a></li>
+		<li><a href="#put">put</a></li>
+		<li><a href="#put_scalar">put_scalar</a></li>
+		<li><a href="#put_file">put_file</a></li>
+		<li><a href="#put_handle">put_handle</a></li>
+		<li><a href="#new_write_handle">new_write_handle</a></li>
+		<li><a href="#commit_write_handle">commit_write_handle</a></li>
+		<li><a href="#validate">validate</a></li>
+		<li><a href="#delete">delete</a></li>
+		<li><a href="#iterator">iterator</a></li>
+		<li><a href="#open_file">open_file</a></li>
+	</ul>
+
+	<li><a href="#handle_objects">HANDLE OBJECTS</a></li>
+</ul>
+
+<hr name="index" />
+</div>
+<!-- INDEX END -->
+
+<p>
+</p>
+<h1><a name="description">DESCRIPTION</a></h1>
+<p>This module lays out a very straightforward API for Content Addressable
+Storage.</p>
+<p>Content Addressable Storage is a concept where a file is identified by a
+one-way message digest checksum of its content.  (usually called a &quot;hash&quot;)
+With a good message digest algorithm, one checksum will statistically only
+ever refer to one file, even though the permutations of the checksum are
+tiny compared to all the permutations of bytes that they can represent.</p>
+<p>Perl uses the term 'hash' to refer to a mapping of key/value pairs, which
+creates a little confusion.  The documentation of this and related modules
+try to use the phrase &quot;digest hash&quot; to clarify when we are referring to the
+output of a digest function vs. a perl key-value mapping.</p>
+<p>In short, a CAS is a key/value mapping where small-ish keys are determined
+from large-ish data but no two pieces of data will ever end up with the same
+key, thanks to astronomical probabilities.  You can then use the small-ish
+key as a reference to the large chunk of data, as a sort of compression
+technique.</p>
+<p>
+</p>
+<hr />
+<h1><a name="purpose">PURPOSE</a></h1>
+<p>One great use for CAS is finding and merging duplicated content.  If you
+take two identical files (which you didn't know were identical) and put them
+both into a CAS, you will get back the same hash, telling you that they are
+the same.  Also, the file will only be stored once, saving disk space.</p>
+<p>Another great use for CAS is the ability for remote systems to compare an
+inventory of files and see which ones are absent on the other system.
+This has applications in backups and content distribution.</p>
+<p>
+</p>
+<hr />
+<h1><a name="synopsis">SYNOPSIS</a></h1>
+<pre>
+  # Create a new CAS which stores everything in plain files.
+  my $cas= DataStore::CAS::Simple-&gt;new(
+    path   =&gt; './foo/bar',
+    create =&gt; 1,
+    digest =&gt; 'SHA-256',
+  );
+  
+  # Store content, and get its hash code
+  my $hash= $cas-&gt;put_scalar(&quot;Blah&quot;);
+  
+  # Retrieve a reference to that content
+  my $file= $cas-&gt;get($hash);
+  
+  # Inspect the file's attributes
+  $file-&gt;size &lt; 1024*1024 or die &quot;Use a smaller file&quot;;
+  
+  # Open a handle to that file (possibly returning a virtual file handle)
+  my $handle= $file-&gt;open;
+  my @lines= &lt;$handle&gt;;</pre>
+<p>
+</p>
+<hr />
+<h1><a name="attributes">ATTRIBUTES</a></h1>
+<p>
+</p>
+<h2><a name="digest">digest</a></h2>
+<p>Read-only.  The name of the digest algorithm being used.</p>
+<p>Subclasses must set this during their constructor.</p>
+<p>
+</p>
+<h2><a name="hash_of_null">hash_of_null</a></h2>
+<p>The digest hash of the empty string.  The cached result of</p>
+<pre>
+  $cas-&gt;put('', { dry_run =&gt; 1 })</pre>
+<p>
+</p>
+<hr />
+<h1><a name="methods">METHODS</a></h1>
+<p>
+</p>
+<h2><a name="get">get</a></h2>
+<pre>
+  $cas-&gt;get( $digest_hash )</pre>
+<p>Returns a <a href="/DataStore/CAS/File.html">the DataStore::CAS::File manpage</a> object for the given hash, if the hash
+exists in storage. Else, returns undef.</p>
+<p>This method is pure-virtual and must be implemented in the subclass.</p>
+<p>
+</p>
+<h2><a name="put">put</a></h2>
+<pre>
+  $cas-&gt;put( $thing, \%optional_flags )</pre>
+<p>Convenience method.
+Inspects $thing and passes it off to a more specific method.  If you want
+more control over which method is called, call it directly.</p>
+<ul>
+<li>
+<p>Scalars are passed to <a href="#put_scalar">put_scalar</a>.</p>
+</li>
+<li>
+<p>Instances of <a href="/DataStore/CAS/File.html">the DataStore::CAS::File manpage</a> or <a href="/Path/Class/File.html">the Path::Class::File manpage</a> are passed to <a href="#put_file">put_file</a>.</p>
+</li>
+<li>
+<p>Globrefs or instances of <a href="/IO/Handle.html">the IO::Handle manpage</a> are passed to <a href="#put_handle">put_handle</a>.</p>
+</li>
+<li>
+<p>Dies if it encounters anything else.</p>
+</li>
+</ul>
+<p>The return value is the digest hash of the stored data.</p>
+<p>See <a href="#new_write_handle">new_write_handle</a> for the discussion of <code>flags</code>.</p>
+<p>Example:</p>
+<pre>
+  my $stats= {};
+  $cas-&gt;put(&quot;abcdef&quot;, { stats =&gt; $stats });
+  $cas-&gt;put(IO::File-&gt;new('~/file','r'), { stats =&gt; $stats });
+  $cas-&gt;put(\*STDIN, { stats =&gt; $stats });
+  $cas-&gt;put(Path::Class::file('~/file'), { stats =&gt; $stats });
+  use Data::Printer;
+  p $stats;</pre>
+<p>
+</p>
+<h2><a name="put_scalar">put_scalar</a></h2>
+<pre>
+  $cas-&gt;put_scalar( $scalar, \%optional_flags )</pre>
+<p>Puts the literal string &quot;$scalar&quot; into the CAS.
+If scalar is a unicode string, it is first converted to an array of UTF-8
+bytes. Beware that when you next call <a href="#get">get</a>, reading from the filehandle
+will give you bytes and not the original Unicode scalar.</p>
+<p>Returns the digest hash of the array of bytes.</p>
+<p>See <a href="#new_write_handle">new_write_handle</a> for the discussion of <code>flags</code>.</p>
+<p>
+</p>
+<h2><a name="put_file">put_file</a></h2>
+<pre>
+  $digest_hash= $cas-&gt;put_file( $filename, \%optional_flags );
+  $digest_hash= $cas-&gt;put_file( $Path_Class_File, \%optional_flags );
+  $digest_hash= $cas-&gt;put_file( $DataStore_CAS_File, \%optional_flags );</pre>
+<p>Insert a file from the filesystem, or from another CAS instance.
+Default implementation simply opens the named file, and passes it to
+put_handle.</p>
+<p>Returns the digest hash of the data stored.</p>
+<p>See <a href="#new_write_handle">new_write_handle</a> for the discussion of <code>flags</code>.</p>
+<p>Additional flags:</p>
+<dl>
+<dt><strong><a name="hardlink_bool" class="item">hardlink =&gt; $bool</a></strong></dt>
+
+<dd>
+<p>If hardlink is true, and the CAS is backed by plain files, it will hardlink
+the file directly into the CAS.</p>
+<p>This reduces the integrity of your CAS; use with care.  You can use the
+<a href="#validate">validate</a> method later to check for corruption.</p>
+</dd>
+<dt><strong><a name="known_hashes_algorithm_digests" class="item">known_hashes =&gt; \%algorithm_digests</a></strong></dt>
+
+<dd>
+<p>If you already know the hash of your file, and don't want to re-calculate it,
+pass a hashref like <code>{ $algorithm_name =&gt; $digest_hash }</code> for this flag,
+and if this CAS is using one of those algorithms, it will use the hash you
+specified instead of re-calculating it.</p>
+<p>This reduces the integrity of your CAS; use with care.</p>
+</dd>
+<dt><strong><a name="reuse_hash" class="item">reuse_hash</a></strong></dt>
+
+<dd>
+<p>This is a shortcut for known_hashes if you specify an instance of
+<a href="/DataStore/CAS/File.html">the DataStore::CAS::File manpage</a>.  It builds a known_hashes of one item using the source
+CAS's digest algorithm.</p>
+</dd>
+</dl>
+<p>Note: A good use of these flags is to transfer files from one instance of
+<a href="/DataStore/CAS/Simple.html">the DataStore::CAS::Simple manpage</a> to another.</p>
+<pre>
+  my $file= $cas1-&gt;get($hash);
+  $cas2-&gt;put($file, { hardlink =&gt; 1, reuse_hash =&gt; 1 });</pre>
+<p>
+</p>
+<h2><a name="put_handle">put_handle</a></h2>
+<pre>
+  $digest_hash= $cas-&gt;put_handle( \*HANDLE | IO::Handle, \%optional_flags );</pre>
+<p>Reads from $io_handle and stores into the CAS.  Calculates the digest hash
+of the data as it goes.  Dies on any I/O errors.</p>
+<p>Returns the calculated hash when complete.</p>
+<p>See <a href="#new_write_handle">new_write_handle</a> for the discussion of <code>flags</code>.</p>
+<p>
+</p>
+<h2><a name="new_write_handle">new_write_handle</a></h2>
+<pre>
+  $handle= $cas-&gt;new_write_handle( %flags )</pre>
+<p>Get a new handle for writing to the Store.  The data written to this handle
+will be saved to a temporary file as the digest hash is calculated.</p>
+<p>When done writing, call either <code>$cas-</code>commit_write_handle( $handle )&gt; (or the
+alias <code>$handle-</code>commit()&gt;) which returns the hash of all data written.  The
+handle will no longer be valid.</p>
+<p>If you free the handle without committing it, the data will not be added to
+the CAS.</p>
+<p>The optional 'flags' hashref can contain a wide variety of parameters, but
+these are supported by all CAS subclasses:</p>
+<dl>
+<dt><strong><a name="dry_run_bool" class="item">dry_run =&gt; $bool</a></strong></dt>
+
+<dd>
+<p>Setting &quot;dry_run&quot; to true will calculate the hash of the $thing, but not store
+it.</p>
+</dd>
+<dt><strong><a name="stats_stats_out" class="item">stats =&gt; \%stats_out</a></strong></dt>
+
+<dd>
+<p>Setting &quot;stats&quot; to a hashref will instruct the CAS implementation to return
+information about the operation, such as number of bytes written, compression
+strategies used, etc.  The statistics are returned within that supplied
+hashref.  Values in the hashref are amended or added to, so you may use the
+same stats hashref for multiple calls and then see the summary for all
+operations when you are done.</p>
+</dd>
+</dl>
+<p>
+</p>
+<h2><a name="commit_write_handle">commit_write_handle</a></h2>
+<pre>
+  my $handle= $cas-&gt;new_write_handle();
+  print $handle $data;
+  $cas-&gt;commit_write_handle($handle);</pre>
+<p>This closes the given write-handle, and then finishes calculating its digest
+hash, and then stores it into the CAS (unless the handle was created with the
+dry_run flag).  It returns the digest_hash of the data.</p>
+<p>
+</p>
+<h2><a name="validate">validate</a></h2>
+<pre>
+  $bool_valid= $cas-&gt;validate( $digest_hash, \%optional_flags )</pre>
+<p>Validate an entry of the CAS.  This is used to detect whether the storage
+has become corrupt.  Returns 1 if the hash checks out ok, and returns 0 if
+it fails, and returns undef if the hash doesn't exist.</p>
+<p>Like the <a href="#put">put</a> method, you can pass a hashref in $flags{stats} which
+will receive information about the file.  This can be used to implement
+mark/sweep algorithms for cleaning out the CAS by asking the CAS for all
+other digest_hashes referenced by $digest_hash.</p>
+<p>The default implementation simply reads the file and re-calculates its hash,
+which should be optimized by subclasses if possible.</p>
+<p>
+</p>
+<h2><a name="delete">delete</a></h2>
+<pre>
+  $bool_happened= $cas-&gt;delete( $digest_hash, %optional_flags )</pre>
+<p>DO NOT USE THIS METHOD UNLESS YOU UNDERSTAND THE CONSEQUENCES</p>
+<p>This method is supplied for completeness... however it is not appropriate
+to use in many scenarios.  Some storage engines may use referencing, where
+one file is stored as a diff against another file, or one file is composed
+of references to others.  It can be difficult to determine whether a given
+digest_hash is truly no longer used.</p>
+<p>The safest way to clean up a CAS is to create a second CAS and migrate the
+items you want to keep from the first to the second; then delete the
+original CAS.  See the documentation on the storage engine you are using
+to see if it supports an efficient way to do this.  For instance,
+<a href="/DataStore/CAS/Simple.html">the DataStore::CAS::Simple manpage</a> can use hard-links on supporting filesystems,
+resulting in a very efficient copy operation.</p>
+<p>If no efficient mechanisms are available, then you might need to write a
+mark/sweep algorithm and then make use of 'delete'.</p>
+<p>Returns true if the item was actually deleted.</p>
+<p>The optional 'flags' hashref can contain a wide variety of parameters, but
+these are supported by all CAS subclasses:</p>
+<dl>
+<dt><strong><a name="dry_run_bool2" class="item">dry_run =&gt; $bool</a></strong></dt>
+
+<dd>
+<p>Setting &quot;dry_run&quot; to true will run a simulation of the delete operation,
+without actually deleting anything.</p>
+</dd>
+<dt><strong><a name="stats_stats_out2" class="item">stats =&gt; \%stats_out</a></strong></dt>
+
+<dd>
+<p>Setting &quot;stats&quot; to a hashref will instruct the CAS implementation to return
+information about the operation within that supplied hashref.  Values in the
+hashref are amended or added to, so you may use the same stats hashref for
+multiple calls and then see the summary for all operations when you are done.</p>
+<dl>
+<dt><strong><a name="delete_count" class="item">delete_count</a></strong></dt>
+
+<dd>
+<p>The number of official entries deleted.</p>
+</dd>
+<dt><strong><a name="delete_missing" class="item">delete_missing</a></strong></dt>
+
+<dd>
+<p>The number of entries that didn't exist.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+<p>
+</p>
+<h2><a name="iterator">iterator</a></h2>
+<pre>
+  $iter= $cas-&gt;iterator( \%optional_flags )
+  while (defined ($digest_hash= $iter-&gt;())) { ... }</pre>
+<p>Iterate the contents of the CAS.  Returns a perl-style coderef iterator which
+returns the next digest_hash string each time you call it.  Returns undef at
+end of the list.</p>
+<p><code>%flags</code> :</p>
+<dl>
+<dt><strong><a name="prefix" class="item">prefix</a></strong></dt>
+
+<dd>
+<p>Specify a prefix for all the returned digest hashes.  This acts as a filter.
+You can use this to imitate Git's feature of identifying an object by a portion
+of its hash instead of having to type the whole thing.  You will probably need
+more digits though, because you're searching the whole CAS, and not just commit
+entries.</p>
+</dd>
+</dl>
+<p>
+</p>
+<h2><a name="open_file">open_file</a></h2>
+<pre>
+  $handle= $cas-&gt;open_file( $fileObject, \%optional_flags )</pre>
+<p>Open the File object (returned by <a href="#get">get</a>) and return a readable and seekable
+filehandle to it.  The filehandle might be a perl filehandle, or might be a
+tied object implementing the filehandle operations.</p>
+<p>Flags:</p>
+<dl>
+<dt><strong><a name="layer" class="item">layer (TODO)</a></strong></dt>
+
+<dd>
+<p>When implemented, this will allow you to specify a Parl I/O layer, like 'raw'
+or 'utf8'.  This is equivalent to calling 'binmode' with that argument on the
+filehandle.  Note that returned handles are 'raw' by default.</p>
+</dd>
+</dl>
+<p>
+</p>
+<hr />
+<h1><a name="handle_objects">HANDLE OBJECTS</a></h1>
+<p>The handles returned by open_file and new_write_handle are compatible with
+both the old GLOBREF style functions and the new IO::Handle API.  In other
+words, you can use either</p>
+<pre>
+  $handle-&gt;read($buffer, 100)
+  or
+  read($handle, $buffer, 100)</pre>
+<p>So they are nicely compatible with other libraries you might use.  It is
+unlikely that they are actually real handles though, so you probably can't
+sysread/syswrite on them.  You can find out by checking &quot;fileno($handle)&quot;.
+One notable exception is DataStore::CAS::Simple-&gt;open_file, which always
+returns a direct filehandle to the underlying file.</p>
+
+</body>
+
+</html>
