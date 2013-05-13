@@ -13,7 +13,7 @@ DataStore::CAS::File - Object returned by DataStore::CAS describing a CAS entry
 
 =head1 VERSION
 
-version 0.0200
+version 0.020001
 
 =head1 DESCRIPTION
 

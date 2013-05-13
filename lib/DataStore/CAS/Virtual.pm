@@ -5,7 +5,7 @@ use Carp;
 use Try::Tiny;
 use Digest 1.16;
 
-our $VERSION= '0.0100';
+our $VERSION= '0.020001';
 
 # ABSTRACT: In-memory CAS for debugging and testing
 
@@ -103,7 +103,7 @@ DataStore::CAS::Virtual - In-memory CAS for debugging and testing
 
 =head1 VERSION
 
-version 0.0200
+version 0.020001
 
 =head1 DESCRIPTION
 
